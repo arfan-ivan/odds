@@ -31,6 +31,7 @@
   .controls { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
   select, button, input { background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:7px 12px; font-size:13px; }
   button { cursor:pointer; } button:hover { border-color:var(--accent); }
+  .live { font-size:10px; color:var(--ok); border:1px solid var(--ok); border-radius:99px; padding:0 6px; margin-left:4px; }
   .chartbox { position:relative; height:280px; }
 </style>
 </head>
@@ -39,15 +40,16 @@
   <div class="logo">ODDS <span>Sensor</span> · Rekaman</div>
   <div style="display:flex;gap:8px;align-items:center;">
     <span class="pill" id="collectorPill">Memuat...</span>
+    <span class="pill" id="rtPill">Realtime: menunggu...</span>
     <span class="pill" id="updatedPill">-</span>
   </div>
 </div>
 
 <div class="container">
   <div class="grid3">
-    <div class="card"><div class="card-lbl">Suhu terakhir</div><div class="card-val" id="valTemp">--</div><div class="card-unit">°C</div></div>
-    <div class="card"><div class="card-lbl">Kelembaban terakhir</div><div class="card-val" id="valHum">--</div><div class="card-unit">%</div></div>
-    <div class="card"><div class="card-lbl">Angin terakhir</div><div class="card-val" id="valWind">--</div><div class="card-unit">m/s</div></div>
+    <div class="card"><div class="card-lbl">Suhu <span class="live">realtime</span></div><div class="card-val" id="valTemp">--</div><div class="card-unit">°C</div></div>
+    <div class="card"><div class="card-lbl">Kelembaban <span class="live">realtime</span></div><div class="card-val" id="valHum">--</div><div class="card-unit">%</div></div>
+    <div class="card"><div class="card-lbl">Angin <span class="live">realtime</span></div><div class="card-val" id="valWind">--</div><div class="card-unit">m/s</div></div>
   </div>
 
   <div class="panel">
@@ -111,13 +113,6 @@ function render() {
   $('statHum').textContent = stats('hum', 1);
   $('statWind').textContent = stats('wind', 2);
 
-  if (rows.length) {
-    const last = rows[0];
-    $('valTemp').textContent = num(last.temp, 1);
-    $('valHum').textContent = num(last.hum, 1);
-    $('valWind').textContent = num(last.wind, 2);
-  }
-
   $('body').innerHTML = rows.length
     ? rows.slice(0, 300).map(r => `<tr><td>${fmtTs(r.ts)}</td><td>${num(r.temp,1)}</td><td>${num(r.hum,1)}</td><td>${num(r.wind,2)}</td></tr>`).join('')
     : '<tr><td colspan="4" class="empty">Belum ada data pada rentang ini</td></tr>';
@@ -157,12 +152,15 @@ async function load() {
     render();
 
     const m = j.meta;
-    if (m && m.lastRun) {
+    if (m && m.lastError) {
+      $('collectorPill').textContent = 'Perekam error: ' + m.lastError;
+      $('collectorPill').className = 'pill err';
+    } else if (m && m.lastRun) {
       const ageMin = Math.round((Date.now() - m.lastRun) / 60000);
       $('collectorPill').textContent = ageMin <= 3 ? 'Perekam aktif' : `Perekam terakhir ${ageMin} mnt lalu`;
       $('collectorPill').className = 'pill ' + (ageMin <= 3 ? 'ok' : 'warn');
     } else {
-      $('collectorPill').textContent = 'Perekam belum berjalan';
+      $('collectorPill').textContent = 'Perekam belum berjalan (cron belum memanggil /api/collect)';
       $('collectorPill').className = 'pill warn';
     }
     $('updatedPill').textContent = 'Diperbarui ' + new Date().toLocaleTimeString('id-ID');
@@ -184,9 +182,28 @@ function exportCsv() {
   URL.revokeObjectURL(a.href);
 }
 
+async function loadRealtime() {
+  try {
+    const res = await fetch('/api/realtime');
+    const j = await res.json();
+    if (!j.ok) throw new Error(j.error || 'gagal');
+    if (!j.data) { $('rtPill').textContent = 'Realtime: sensor tidak mengirim data'; $('rtPill').className = 'pill warn'; return; }
+    $('valTemp').textContent = num(j.data.temp, 1);
+    $('valHum').textContent = num(j.data.hum, 1);
+    $('valWind').textContent = num(j.data.wind, 2);
+    $('rtPill').textContent = 'Realtime: ' + new Date().toLocaleTimeString('id-ID');
+    $('rtPill').className = 'pill ok';
+  } catch (e) {
+    $('rtPill').textContent = 'Realtime error: ' + e.message;
+    $('rtPill').className = 'pill err';
+  }
+}
+
 $('range').addEventListener('change', load);
 load();
+loadRealtime();
 setInterval(load, 60000);
+setInterval(loadRealtime, 10000);
 </script>
 </body>
 </html>
