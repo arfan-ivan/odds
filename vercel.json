@@ -1,7 +1,20 @@
+
 {
   "functions": {
-    "api/collect.js": { "maxDuration": 60 },
-    "api/data.js": { "maxDuration": 15 },
-    "api/realtime.js": { "maxDuration": 15 }
-  }
+    "api/collect.js": {
+      "maxDuration": 60
+    },
+    "api/data.js": {
+      "maxDuration": 15
+    },
+    "api/realtime.js": {
+      "maxDuration": 15
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/collect",
+      "schedule": "0 0 * * *"
+    }
+  ]
 }
