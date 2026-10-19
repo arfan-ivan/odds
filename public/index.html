@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ODDS Sensor - Rekaman Data</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root { --bg:#0f1720; --panel:#17212d; --line:#243242; --text:#e6edf3; --muted:#8b9bb0; --accent:#38bdf8; --ok:#34d399; --warn:#fbbf24; --err:#f87171; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--text); }
+  .topbar { display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-bottom:1px solid var(--line); flex-wrap:wrap; gap:8px; }
+  .logo { font-weight:700; font-size:18px; } .logo span { color:var(--accent); }
+  .pill { font-size:12px; padding:3px 10px; border-radius:99px; background:var(--line); color:var(--muted); }
+  .pill.ok { color:var(--ok); } .pill.warn { color:var(--warn); } .pill.err { color:var(--err); }
+  .container { max-width:1100px; margin:0 auto; padding:16px; }
+  .grid3 { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; }
+  .card, .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  .panel { margin-top:16px; }
+  .card-lbl { color:var(--muted); font-size:13px; } .card-val { font-size:34px; font-weight:700; }
+  .card-unit { color:var(--accent); font-size:13px; }
+  .panel-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px; flex-wrap:wrap; }
+  h2 { margin:0; font-size:15px; }
+  .row { display:flex; justify-content:space-between; padding:8px 0; border-top:1px solid var(--line); font-size:14px; }
+  .row-label { color:var(--muted); }
+  .tablewrap { max-height:420px; overflow:auto; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th { position:sticky; top:0; background:var(--panel); color:var(--muted); font-weight:600; }
+  .empty { text-align:center; color:var(--muted); padding:24px; }
+  .controls { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  select, button, input { background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:7px 12px; font-size:13px; }
+  button { cursor:pointer; } button:hover { border-color:var(--accent); }
+  .chartbox { position:relative; height:280px; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="logo">ODDS <span>Sensor</span> · Rekaman</div>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <span class="pill" id="collectorPill">Memuat...</span>
+    <span class="pill" id="updatedPill">-</span>
+  </div>
+</div>
+
+<div class="container">
+  <div class="grid3">
+    <div class="card"><div class="card-lbl">Suhu terakhir</div><div class="card-val" id="valTemp">--</div><div class="card-unit">°C</div></div>
+    <div class="card"><div class="card-lbl">Kelembaban terakhir</div><div class="card-val" id="valHum">--</div><div class="card-unit">%</div></div>
+    <div class="card"><div class="card-lbl">Angin terakhir</div><div class="card-val" id="valWind">--</div><div class="card-unit">m/s</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <h2>Grafik</h2>
+      <div class="controls">
+        <select id="range">
+          <option value="3600000">1 jam</option>
+          <option value="21600000">6 jam</option>
+          <option value="86400000" selected>24 jam</option>
+          <option value="604800000">7 hari</option>
+          <option value="2592000000">30 hari</option>
+        </select>
+        <button onclick="load()">Muat ulang</button>
+      </div>
+    </div>
+    <div class="chartbox"><canvas id="chart"></canvas></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header"><h2>Statistik</h2><span class="pill" id="statCount">0 data</span></div>
+    <div class="row"><span class="row-label">Suhu (min / maks / rata-rata)</span><span id="statTemp">-</span></div>
+    <div class="row"><span class="row-label">Kelembaban (min / maks / rata-rata)</span><span id="statHum">-</span></div>
+    <div class="row"><span class="row-label">Angin (min / maks / rata-rata)</span><span id="statWind">-</span></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <h2>Riwayat Data</h2>
+      <div class="controls"><button onclick="exportCsv()">⬇ Export CSV</button></div>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Waktu</th><th>Suhu (°C)</th><th>Hum (%)</th><th>Angin (m/s)</th></tr></thead>
+        <tbody id="body"><tr><td colspan="4" class="empty">Memuat...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let rows = [];
+let chart;
+
+const fmtTs = ts => new Date(Number(ts)).toLocaleString('id-ID', {
+  day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit'
+});
+const num = (v, d) => (v === null || v === undefined || isNaN(v)) ? '-' : Number(v).toFixed(d);
+
+function stats(key, d) {
+  const v = rows.map(r => r[key]).filter(x => x !== null && x !== undefined && !isNaN(x));
+  if (!v.length) return '-';
+  const avg = v.reduce((a, b) => a + b, 0) / v.length;
+  return `${Math.min(...v).toFixed(d)} / ${Math.max(...v).toFixed(d)} / ${avg.toFixed(d)}`;
+}
+
+function render() {
+  $('statCount').textContent = rows.length + ' data';
+  $('statTemp').textContent = stats('temp', 1);
+  $('statHum').textContent = stats('hum', 1);
+  $('statWind').textContent = stats('wind', 2);
+
+  if (rows.length) {
+    const last = rows[0];
+    $('valTemp').textContent = num(last.temp, 1);
+    $('valHum').textContent = num(last.hum, 1);
+    $('valWind').textContent = num(last.wind, 2);
+  }
+
+  $('body').innerHTML = rows.length
+    ? rows.slice(0, 300).map(r => `<tr><td>${fmtTs(r.ts)}</td><td>${num(r.temp,1)}</td><td>${num(r.hum,1)}</td><td>${num(r.wind,2)}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="empty">Belum ada data pada rentang ini</td></tr>';
+
+  const asc = [...rows].reverse();
+  const labels = asc.map(r => new Date(r.ts).toLocaleString('id-ID', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }));
+  const ds = [
+    { label:'Suhu (°C)', data:asc.map(r => r.temp), borderColor:'#f87171', yAxisID:'y' },
+    { label:'Kelembaban (%)', data:asc.map(r => r.hum), borderColor:'#38bdf8', yAxisID:'y' },
+    { label:'Angin (m/s)', data:asc.map(r => r.wind), borderColor:'#34d399', yAxisID:'y1' }
+  ].map(d => ({ ...d, borderWidth:1.5, pointRadius:0, tension:.25, spanGaps:true }));
+
+  if (chart) chart.destroy();
+  chart = new Chart($('chart'), {
+    type:'line',
+    data:{ labels, datasets:ds },
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:false,
+      interaction:{ mode:'index', intersect:false },
+      plugins:{ legend:{ labels:{ color:'#e6edf3' } } },
+      scales:{
+        x:{ ticks:{ color:'#8b9bb0', maxTicksLimit:8 }, grid:{ color:'#243242' } },
+        y:{ position:'left', ticks:{ color:'#8b9bb0' }, grid:{ color:'#243242' } },
+        y1:{ position:'right', ticks:{ color:'#8b9bb0' }, grid:{ drawOnChartArea:false } }
+      }
+    }
+  });
+}
+
+async function load() {
+  try {
+    const from = Date.now() - Number($('range').value);
+    const res = await fetch(`/api/data?limit=5000&from=${from}`);
+    const j = await res.json();
+    if (!j.ok) throw new Error(j.error || 'Gagal memuat');
+    rows = j.data;
+    render();
+
+    const m = j.meta;
+    if (m && m.lastRun) {
+      const ageMin = Math.round((Date.now() - m.lastRun) / 60000);
+      $('collectorPill').textContent = ageMin <= 3 ? 'Perekam aktif' : `Perekam terakhir ${ageMin} mnt lalu`;
+      $('collectorPill').className = 'pill ' + (ageMin <= 3 ? 'ok' : 'warn');
+    } else {
+      $('collectorPill').textContent = 'Perekam belum berjalan';
+      $('collectorPill').className = 'pill warn';
+    }
+    $('updatedPill').textContent = 'Diperbarui ' + new Date().toLocaleTimeString('id-ID');
+  } catch (e) {
+    $('collectorPill').textContent = 'Error: ' + e.message;
+    $('collectorPill').className = 'pill err';
+  }
+}
+
+function exportCsv() {
+  const asc = [...rows].reverse();
+  const lines = ['timestamp_epoch_ms,waktu,temperature_c,humidity_pct,wind_speed_ms'];
+  asc.forEach(r => lines.push(`${r.ts},"${fmtTs(r.ts)}",${r.temp ?? ''},${r.hum ?? ''},${r.wind ?? ''}`));
+  const blob = new Blob([lines.join('\n')], { type:'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'odds_' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(a.href);
+}
+
+$('range').addEventListener('change', load);
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>
