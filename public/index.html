@@ -3,42 +3,70 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
 <title>ODDS Sensor - Rekaman Data</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
-  :root { --bg:#0f1720; --panel:#17212d; --line:#243242; --text:#e6edf3; --muted:#8b9bb0; --accent:#38bdf8; --ok:#34d399; --warn:#fbbf24; --err:#f87171; }
+  :root {
+    --bg:#f5f7fa; --panel:#ffffff; --line:#e3e8ef; --line-soft:#eef1f6;
+    --text:#1a2433; --muted:#64748b;
+    --accent:#0284c7; --temp:#dc2626; --hum:#0284c7; --wind:#059669;
+    --ok:#047857; --ok-bg:#d1fae5; --warn:#b45309; --warn-bg:#fef3c7; --err:#b91c1c; --err-bg:#fee2e2;
+    --shadow:0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.06);
+  }
   * { box-sizing:border-box; }
-  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--text); }
-  .topbar { display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-bottom:1px solid var(--line); flex-wrap:wrap; gap:8px; }
-  .logo { font-weight:700; font-size:18px; } .logo span { color:var(--accent); }
-  .pill { font-size:12px; padding:3px 10px; border-radius:99px; background:var(--line); color:var(--muted); }
-  .pill.ok { color:var(--ok); } .pill.warn { color:var(--warn); } .pill.err { color:var(--err); }
+  body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--text); }
+
+  .topbar { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;
+            padding:14px 20px; background:var(--panel); border-bottom:1px solid var(--line); }
+  .logo { font-weight:700; font-size:18px; letter-spacing:.2px; }
+  .logo span { color:var(--accent); }
+  .logo small { font-weight:500; color:var(--muted); font-size:13px; margin-left:6px; }
+  .pills { display:flex; gap:8px; flex-wrap:wrap; }
+  .pill { font-size:12px; padding:4px 11px; border-radius:99px; background:var(--line-soft); color:var(--muted); border:1px solid var(--line); }
+  .pill.ok   { background:var(--ok-bg);   color:var(--ok);   border-color:transparent; }
+  .pill.warn { background:var(--warn-bg); color:var(--warn); border-color:transparent; }
+  .pill.err  { background:var(--err-bg);  color:var(--err);  border-color:transparent; }
+
   .container { max-width:1100px; margin:0 auto; padding:16px; }
-  .grid3 { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; }
-  .card, .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; }
-  .panel { margin-top:16px; }
-  .card-lbl { color:var(--muted); font-size:13px; } .card-val { font-size:34px; font-weight:700; }
-  .card-unit { color:var(--accent); font-size:13px; }
-  .panel-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px; flex-wrap:wrap; }
+  .grid3 { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+  .card, .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); }
+  .card { padding:16px 18px; border-top:3px solid var(--c, var(--accent)); }
+  .card.t { --c:var(--temp); } .card.h { --c:var(--hum); } .card.w { --c:var(--wind); }
+  .card-lbl { color:var(--muted); font-size:13px; display:flex; align-items:center; gap:6px; }
+  .card-val { font-size:38px; font-weight:700; line-height:1.15; margin-top:6px; }
+  .card-unit { color:var(--c); font-size:13px; font-weight:600; }
+  .live { font-size:10px; color:var(--ok); background:var(--ok-bg); border-radius:99px; padding:1px 7px; font-weight:600; }
+
+  .panel { padding:16px; margin-top:16px; }
+  .panel-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:8px; flex-wrap:wrap; }
   h2 { margin:0; font-size:15px; }
-  .row { display:flex; justify-content:space-between; padding:8px 0; border-top:1px solid var(--line); font-size:14px; }
-  .row-label { color:var(--muted); }
-  .tablewrap { max-height:420px; overflow:auto; }
-  table { width:100%; border-collapse:collapse; font-size:13px; }
-  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
-  th { position:sticky; top:0; background:var(--panel); color:var(--muted); font-weight:600; }
-  .empty { text-align:center; color:var(--muted); padding:24px; }
   .controls { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-  select, button, input { background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:7px 12px; font-size:13px; }
-  button { cursor:pointer; } button:hover { border-color:var(--accent); }
-  .live { font-size:10px; color:var(--ok); border:1px solid var(--ok); border-radius:99px; padding:0 6px; margin-left:4px; }
-  .chartbox { position:relative; height:280px; }
+  select, button { background:#fff; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:7px 12px; font-size:13px; font-family:inherit; }
+  button { cursor:pointer; }
+  button:hover, select:hover { border-color:var(--accent); }
+  button:focus-visible, select:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+
+  .chartbox { position:relative; height:300px; }
+
+  .row { display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-top:1px solid var(--line-soft); font-size:14px; }
+  .row-label { color:var(--muted); }
+  .row span:last-child { font-variant-numeric:tabular-nums; font-weight:500; }
+
+  .tablewrap { max-height:420px; overflow:auto; border:1px solid var(--line-soft); border-radius:8px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--line-soft); white-space:nowrap; font-variant-numeric:tabular-nums; }
+  th { position:sticky; top:0; background:#f8fafc; color:var(--muted); font-weight:600; }
+  tbody tr:hover { background:#f8fafc; }
+  .empty { text-align:center; color:var(--muted); padding:28px; }
+
+  @media (max-width:560px) { .card-val { font-size:32px; } .topbar { padding:12px 14px; } }
 </style>
 </head>
 <body>
 <div class="topbar">
-  <div class="logo">ODDS <span>Sensor</span> · Rekaman</div>
-  <div style="display:flex;gap:8px;align-items:center;">
+  <div class="logo">ODDS <span>Sensor</span><small>Rekaman Data</small></div>
+  <div class="pills">
     <span class="pill" id="collectorPill">Memuat...</span>
     <span class="pill" id="rtPill">Realtime: menunggu...</span>
     <span class="pill" id="updatedPill">-</span>
@@ -47,16 +75,16 @@
 
 <div class="container">
   <div class="grid3">
-    <div class="card"><div class="card-lbl">Suhu <span class="live">realtime</span></div><div class="card-val" id="valTemp">--</div><div class="card-unit">°C</div></div>
-    <div class="card"><div class="card-lbl">Kelembaban <span class="live">realtime</span></div><div class="card-val" id="valHum">--</div><div class="card-unit">%</div></div>
-    <div class="card"><div class="card-lbl">Angin <span class="live">realtime</span></div><div class="card-val" id="valWind">--</div><div class="card-unit">m/s</div></div>
+    <div class="card t"><div class="card-lbl">Suhu <span class="live">realtime</span></div><div class="card-val" id="valTemp">--</div><div class="card-unit">°C</div></div>
+    <div class="card h"><div class="card-lbl">Kelembaban <span class="live">realtime</span></div><div class="card-val" id="valHum">--</div><div class="card-unit">%</div></div>
+    <div class="card w"><div class="card-lbl">Angin <span class="live">realtime</span></div><div class="card-val" id="valWind">--</div><div class="card-unit">m/s</div></div>
   </div>
 
   <div class="panel">
     <div class="panel-header">
       <h2>Grafik</h2>
       <div class="controls">
-        <select id="range">
+        <select id="range" aria-label="Rentang waktu">
           <option value="3600000">1 jam</option>
           <option value="21600000">6 jam</option>
           <option value="86400000" selected>24 jam</option>
@@ -109,9 +137,9 @@ function stats(key, d) {
 
 function render() {
   $('statCount').textContent = rows.length + ' data';
-  $('statTemp').textContent = stats('temp', 1);
-  $('statHum').textContent = stats('hum', 1);
-  $('statWind').textContent = stats('wind', 2);
+  $('statTemp').textContent = stats('temp', 1) + (rows.length ? ' °C' : '');
+  $('statHum').textContent = stats('hum', 1) + (rows.length ? ' %' : '');
+  $('statWind').textContent = stats('wind', 2) + (rows.length ? ' m/s' : '');
 
   $('body').innerHTML = rows.length
     ? rows.slice(0, 300).map(r => `<tr><td>${fmtTs(r.ts)}</td><td>${num(r.temp,1)}</td><td>${num(r.hum,1)}</td><td>${num(r.wind,2)}</td></tr>`).join('')
@@ -120,10 +148,10 @@ function render() {
   const asc = [...rows].reverse();
   const labels = asc.map(r => new Date(r.ts).toLocaleString('id-ID', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }));
   const ds = [
-    { label:'Suhu (°C)', data:asc.map(r => r.temp), borderColor:'#f87171', yAxisID:'y' },
-    { label:'Kelembaban (%)', data:asc.map(r => r.hum), borderColor:'#38bdf8', yAxisID:'y' },
-    { label:'Angin (m/s)', data:asc.map(r => r.wind), borderColor:'#34d399', yAxisID:'y1' }
-  ].map(d => ({ ...d, borderWidth:1.5, pointRadius:0, tension:.25, spanGaps:true }));
+    { label:'Suhu (°C)',      data:asc.map(r => r.temp), borderColor:'#dc2626', backgroundColor:'#dc2626', yAxisID:'y' },
+    { label:'Kelembaban (%)', data:asc.map(r => r.hum),  borderColor:'#0284c7', backgroundColor:'#0284c7', yAxisID:'y' },
+    { label:'Angin (m/s)',    data:asc.map(r => r.wind), borderColor:'#059669', backgroundColor:'#059669', yAxisID:'y1' }
+  ].map(d => ({ ...d, borderWidth:2, pointRadius:asc.length < 40 ? 3 : 0, pointHoverRadius:4, tension:.25, spanGaps:true }));
 
   if (chart) chart.destroy();
   chart = new Chart($('chart'), {
@@ -132,11 +160,14 @@ function render() {
     options:{
       responsive:true, maintainAspectRatio:false, animation:false,
       interaction:{ mode:'index', intersect:false },
-      plugins:{ legend:{ labels:{ color:'#e6edf3' } } },
+      plugins:{
+        legend:{ labels:{ color:'#1a2433', usePointStyle:true, boxWidth:8 } },
+        tooltip:{ backgroundColor:'#ffffff', titleColor:'#1a2433', bodyColor:'#1a2433', borderColor:'#e3e8ef', borderWidth:1 }
+      },
       scales:{
-        x:{ ticks:{ color:'#8b9bb0', maxTicksLimit:8 }, grid:{ color:'#243242' } },
-        y:{ position:'left', ticks:{ color:'#8b9bb0' }, grid:{ color:'#243242' } },
-        y1:{ position:'right', ticks:{ color:'#8b9bb0' }, grid:{ drawOnChartArea:false } }
+        x:{ ticks:{ color:'#64748b', maxTicksLimit:8 }, grid:{ color:'#eef1f6' } },
+        y:{ position:'left', ticks:{ color:'#64748b' }, grid:{ color:'#eef1f6' } },
+        y1:{ position:'right', ticks:{ color:'#64748b' }, grid:{ drawOnChartArea:false } }
       }
     }
   });
@@ -170,18 +201,6 @@ async function load() {
   }
 }
 
-function exportCsv() {
-  const asc = [...rows].reverse();
-  const lines = ['timestamp_epoch_ms,waktu,temperature_c,humidity_pct,wind_speed_ms'];
-  asc.forEach(r => lines.push(`${r.ts},"${fmtTs(r.ts)}",${r.temp ?? ''},${r.hum ?? ''},${r.wind ?? ''}`));
-  const blob = new Blob([lines.join('\n')], { type:'text/csv' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'odds_' + new Date().toISOString().slice(0, 10) + '.csv';
-  document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(a.href);
-}
-
 async function loadRealtime() {
   try {
     const res = await fetch('/api/realtime');
@@ -197,6 +216,18 @@ async function loadRealtime() {
     $('rtPill').textContent = 'Realtime error: ' + e.message;
     $('rtPill').className = 'pill err';
   }
+}
+
+function exportCsv() {
+  const asc = [...rows].reverse();
+  const lines = ['timestamp_epoch_ms,waktu,temperature_c,humidity_pct,wind_speed_ms'];
+  asc.forEach(r => lines.push(`${r.ts},"${fmtTs(r.ts)}",${r.temp ?? ''},${r.hum ?? ''},${r.wind ?? ''}`));
+  const blob = new Blob([lines.join('\n')], { type:'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'odds_' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(a.href);
 }
 
 $('range').addEventListener('change', load);
