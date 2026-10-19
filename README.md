@@ -1,25 +1,28 @@
 # ODDS Sensor Logger (Vercel + Firebase)
 
-Merekam data **realtime** dari HiveMQ (`odds/sensor/realtime`) ke **Firebase Firestore**
+Merekam data **realtime** dari HiveMQ (`odds/sensor/realtime`) ke **Firebase Realtime Database**
 secara otomatis, tanpa perlu membuka web. Dashboard hanya untuk melihat hasil rekaman.
 
 ```
-ESP32 -> HiveMQ -> /api/collect (dipanggil tiap menit) -> Firestore -> dashboard (/)
+ESP32 -> HiveMQ -> /api/collect (dipanggil tiap menit) -> Realtime Database -> dashboard (/)
 ```
 
 ## Struktur
-- `api/collect.js` : subscribe MQTT ~50 detik, simpan 1 data tiap 30 detik ke Firestore
-- `api/data.js`    : membaca data dari Firestore untuk dashboard
+- `api/collect.js` : subscribe MQTT ~50 detik, simpan 1 data tiap 30 detik ke Realtime Database
+- `api/data.js`    : membaca data dari Realtime Database untuk dashboard
 - `public/index.html` : dashboard (grafik, statistik, tabel, export CSV)
 - `vercel.json`, `package.json`, `.env.example`
 
-## Langkah 1 - Firebase
-1. Buka https://console.firebase.google.com -> buat project.
-2. **Build -> Firestore Database -> Create database** (mode production).
+## Langkah 1 - Firebase (Realtime Database)
+1. Buka https://console.firebase.google.com -> pilih project Anda.
+2. **Build -> Realtime Database** (sudah Anda buat). Salin URL database di bagian atas halaman data,
+   misalnya `https://nama-project-default-rtdb.firebaseio.com` -> isi ke `FIREBASE_DATABASE_URL`.
 3. **Project settings -> Service accounts -> Generate new private key** -> unduh file JSON.
-4. Buka file JSON itu, salin **seluruh isinya jadi satu baris** (untuk env `FIREBASE_SERVICE_ACCOUNT`).
-5. Aturan Firestore biarkan terkunci (default). Server memakai service account sehingga tidak terpengaruh.
-6. Saat dashboard pertama kali meminta query dengan filter `ts` + urutan, Firestore tidak butuh index tambahan (satu field).
+4. Salin **seluruh isi JSON jadi satu baris** (untuk env `FIREBASE_SERVICE_ACCOUNT`).
+5. Rules database biarkan terkunci (`".read": false, ".write": false`). Server memakai service account,
+   jadi tetap bisa menulis dan membaca.
+
+Data tersimpan di `readings/<timestamp_ms>` dan status perekam di `meta/collector`.
 
 ## Langkah 2 - Deploy ke Vercel
 1. Upload folder ini ke repo GitHub (jangan upload file `.env` asli).
@@ -27,6 +30,7 @@ ESP32 -> HiveMQ -> /api/collect (dipanggil tiap menit) -> Firestore -> dashboard
 3. **Settings -> Environment Variables**, isi semua variabel dari `.env.example`:
    - `MQTT_BROKER`, `MQTT_USERNAME`, `MQTT_PASSWORD` (user HiveMQ)
    - `CRON_SECRET` (kata sandi acak buatan Anda)
+   - `FIREBASE_DATABASE_URL` (URL Realtime Database)
    - `FIREBASE_SERVICE_ACCOUNT` (JSON satu baris)
 4. **Redeploy** agar variabel terbaca.
 
@@ -47,7 +51,6 @@ Cek manual: buka URL `/api/collect?key=...` di browser, hasilnya mirip `{"ok":tr
 ## Catatan
 - Jika `received` = 0, berarti ESP32 sedang offline atau topik/kredensial MQTT salah.
 - Timestamp memakai waktu server (epoch ms) sehingga tidak bergantung jam ESP32.
-- Penyimpanan 1 data/30 detik ~ 2.880 dokumen/hari. Free tier Firestore (20 ribu tulis/hari) cukup.
+- 1 data/30 detik ~ 2.880 data/hari (~250 KB/hari). Free tier Realtime Database (1 GB) cukup untuk beberapa tahun.
 - Kredensial HiveMQ sebelumnya tertulis di HTML ESP32 (`Odds1234`). Sebaiknya buat user HiveMQ baru khusus
   untuk logger ini dan ganti password lama.
-# odds

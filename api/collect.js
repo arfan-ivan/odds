@@ -5,9 +5,12 @@ function getDb() {
   if (!admin.apps.length) {
     const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
     sa.private_key = sa.private_key.replace(/\\n/g, '\n');
-    admin.initializeApp({ credential: admin.credential.cert(sa) });
+    admin.initializeApp({
+      credential: admin.credential.cert(sa),
+      databaseURL: process.env.FIREBASE_DATABASE_URL
+    });
   }
-  return admin.firestore();
+  return admin.database();
 }
 
 export default async function handler(req, res) {
@@ -65,7 +68,7 @@ export default async function handler(req, res) {
 
         lastSaved = now;
         records.push({
-          ts: now, // waktu server (ms), zona waktu independen
+          ts: now, // waktu server (ms)
           temp: isNaN(temp) ? null : temp,
           hum: isNaN(hum) ? null : hum,
           wind: isNaN(wind) ? null : wind
@@ -80,20 +83,15 @@ export default async function handler(req, res) {
     });
 
     const db = getDb();
-    const batch = db.batch();
-    for (const r of records) {
-      batch.set(db.collection('readings').doc(String(r.ts)), {
-        ...r,
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-    }
-    batch.set(db.collection('meta').doc('collector'), {
+    const updates = {};
+    for (const r of records) updates['readings/' + r.ts] = r;
+    updates['meta/collector'] = {
       lastRun: Date.now(),
       received,
       saved: records.length,
       sensorStatus
-    });
-    await batch.commit();
+    };
+    await db.ref().update(updates);
 
     return res.status(200).json({ ok: true, received, saved: records.length, sensorStatus });
   } catch (err) {
