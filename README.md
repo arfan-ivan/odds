@@ -9,6 +9,7 @@ ESP32 -> HiveMQ -> /api/collect (dipanggil tiap menit) -> Realtime Database -> d
 
 ## Struktur
 - `api/collect.js` : subscribe MQTT ~50 detik, simpan 1 data tiap 30 detik ke Realtime Database
+- `api/delete.js`  : hapus satu data / semua data (butuh `ADMIN_PASSWORD`)
 - `api/data.js`    : membaca data dari Realtime Database untuk dashboard
 - `public/index.html` : dashboard (grafik, statistik, tabel, export CSV)
 - `vercel.json`, `package.json`, `.env.example`
@@ -30,6 +31,7 @@ Data tersimpan di `readings/<timestamp_ms>` dan status perekam di `meta/collecto
 3. **Settings -> Environment Variables**, isi semua variabel dari `.env.example`:
    - `MQTT_BROKER`, `MQTT_USERNAME`, `MQTT_PASSWORD` (user HiveMQ)
    - `CRON_SECRET` (kata sandi acak buatan Anda)
+   - `ADMIN_PASSWORD` (password untuk tombol Hapus di dashboard)
    - `FIREBASE_DATABASE_URL` (URL Realtime Database)
    - `FIREBASE_SERVICE_ACCOUNT` (JSON satu baris)
 4. **Redeploy** agar variabel terbaca.
@@ -40,13 +42,14 @@ Cron bawaan Vercel paket **Hobby hanya 1x per hari**, jadi gunakan layanan grati
 1. Daftar di https://cron-job.org -> **Create cronjob**.
 2. URL: `https://NAMA-PROJECT.vercel.app/api/collect?key=ISI_CRON_SECRET`
 3. Jadwal: **setiap 1 menit**.
-4. Di **Advanced**, atur **Request timeout = 60 detik** (default 30 detik akan memutus proses).
+4. Di **Advanced**, biarkan **Request timeout = 30 detik** (batas maksimum akun gratis). Tidak masalah: endpoint membalas langsung, perekaman berjalan di latar belakang.
 5. Simpan dan aktifkan.
 
 Setiap panggilan mendengarkan MQTT ~50 detik lalu menyimpan data, sehingga rekaman nyaris tanpa celah
 (1 data tiap 30 detik, bisa diubah lewat `SAVE_INTERVAL_SECONDS`).
 
-Cek manual: buka URL `/api/collect?key=...` di browser, hasilnya mirip `{"ok":true,"received":25,"saved":2}`.
+Cek manual: buka `/api/collect?key=...&wait=1` di browser, tunggu ~50 detik, hasilnya mirip `{"ok":true,"received":25,"saved":2}`.
+Tanpa `&wait=1`, endpoint hanya membalas `{"ok":true,"started":true}` (ini yang dipakai cron).
 
 ## Catatan
 - Jika `received` = 0, berarti ESP32 sedang offline atau topik/kredensial MQTT salah.

@@ -60,6 +60,11 @@
   tbody tr:hover { background:#f8fafc; }
   .empty { text-align:center; color:var(--muted); padding:28px; }
 
+  button.danger { color:#b91c1c; border-color:#fecaca; background:#fff5f5; }
+  button.danger:hover { border-color:#dc2626; background:#fee2e2; }
+  button.del { padding:3px 9px; font-size:12px; }
+  td.act, th.act { text-align:right; width:1%; }
+
   @media (max-width:560px) { .card-val { font-size:32px; } .topbar { padding:12px 14px; } }
 </style>
 </head>
@@ -107,12 +112,15 @@
   <div class="panel">
     <div class="panel-header">
       <h2>Riwayat Data</h2>
-      <div class="controls"><button onclick="exportCsv()">⬇ Export CSV</button></div>
+      <div class="controls">
+        <button onclick="exportCsv()">⬇ Export CSV</button>
+        <button class="danger" onclick="clearAll()">🗑 Hapus Semua</button>
+      </div>
     </div>
     <div class="tablewrap">
       <table>
-        <thead><tr><th>Waktu</th><th>Suhu (°C)</th><th>Hum (%)</th><th>Angin (m/s)</th></tr></thead>
-        <tbody id="body"><tr><td colspan="4" class="empty">Memuat...</td></tr></tbody>
+        <thead><tr><th>Waktu</th><th>Suhu (°C)</th><th>Hum (%)</th><th>Angin (m/s)</th><th class="act">Aksi</th></tr></thead>
+        <tbody id="body"><tr><td colspan="5" class="empty">Memuat...</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -142,8 +150,8 @@ function render() {
   $('statWind').textContent = stats('wind', 2) + (rows.length ? ' m/s' : '');
 
   $('body').innerHTML = rows.length
-    ? rows.slice(0, 300).map(r => `<tr><td>${fmtTs(r.ts)}</td><td>${num(r.temp,1)}</td><td>${num(r.hum,1)}</td><td>${num(r.wind,2)}</td></tr>`).join('')
-    : '<tr><td colspan="4" class="empty">Belum ada data pada rentang ini</td></tr>';
+    ? rows.slice(0, 300).map(r => `<tr><td>${fmtTs(r.ts)}</td><td>${num(r.temp,1)}</td><td>${num(r.hum,1)}</td><td>${num(r.wind,2)}</td><td class="act"><button class="danger del" onclick="delRow('${r.ts}')">Hapus</button></td></tr>`).join('')
+    : '<tr><td colspan="5" class="empty">Belum ada data pada rentang ini</td></tr>';
 
   const asc = [...rows].reverse();
   const labels = asc.map(r => new Date(r.ts).toLocaleString('id-ID', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }));
@@ -228,6 +236,53 @@ function exportCsv() {
   a.download = 'odds_' + new Date().toISOString().slice(0, 10) + '.csv';
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(a.href);
+}
+
+// ---- Hapus data (dilindungi password admin) ----
+function getPw(force) {
+  let pw = '';
+  try { pw = force ? '' : (sessionStorage.getItem('adminPw') || ''); } catch {}
+  if (!pw) {
+    pw = prompt('Masukkan password admin untuk menghapus data:') || '';
+    if (pw) { try { sessionStorage.setItem('adminPw', pw); } catch {} }
+  }
+  return pw;
+}
+
+async function callDelete(payload) {
+  const pw = getPw(false);
+  if (!pw) return false;
+  try {
+    const res = await fetch('/api/delete', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'x-admin-password': pw },
+      body: JSON.stringify(payload)
+    });
+    const j = await res.json();
+    if (res.status === 401) { try { sessionStorage.removeItem('adminPw'); } catch {} }
+    if (!j.ok) { alert('Gagal menghapus: ' + (j.error || res.status)); return false; }
+    return true;
+  } catch (e) {
+    alert('Gagal menghapus: ' + e.message);
+    return false;
+  }
+}
+
+async function delRow(ts) {
+  if (!confirm('Hapus data pada ' + fmtTs(ts) + ' ?')) return;
+  if (await callDelete({ ts })) {
+    rows = rows.filter(r => String(r.ts) !== String(ts));
+    render();
+  }
+}
+
+async function clearAll() {
+  if (!confirm('HAPUS SEMUA data rekaman?\nSeluruh riwayat (bukan hanya rentang yang tampil) akan hilang dan tidak bisa dikembalikan.')) return;
+  if (prompt('Ketik HAPUS untuk melanjutkan:') !== 'HAPUS') return;
+  if (await callDelete({ all: true })) {
+    rows = [];
+    render();
+  }
 }
 
 $('range').addEventListener('change', load);
