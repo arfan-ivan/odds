@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "firebase-admin": "^12.6.0",
-    "mqtt": "^5.10.1"
+    "mqtt": "^5.10.1",
+    "@vercel/functions": "^1.5.0"
   }
 }

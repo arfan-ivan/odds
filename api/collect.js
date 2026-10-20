@@ -1,5 +1,6 @@
 import mqtt from 'mqtt';
 import admin from 'firebase-admin';
+import { waitUntil } from '@vercel/functions';
 
 function getDb() {
   if (!admin.apps.length) {
@@ -13,14 +14,8 @@ function getDb() {
   return admin.database();
 }
 
-export default async function handler(req, res) {
-  // --- Autentikasi sederhana ---
-  const bearer = (req.headers.authorization || '').replace('Bearer ', '');
-  const key = req.query.key || bearer;
-  if (!process.env.CRON_SECRET || key !== process.env.CRON_SECRET) {
-    return res.status(401).json({ error: 'unauthorized' });
-  }
-
+// Mendengarkan MQTT selama COLLECT_SECONDS, lalu menyimpan hasilnya ke Firebase.
+async function collect() {
   const BROKER = process.env.MQTT_BROKER;
   const TOPIC = process.env.MQTT_TOPIC_REALTIME || 'odds/sensor/realtime';
   const windowMs = Number(process.env.COLLECT_SECONDS || 50) * 1000;
@@ -28,6 +23,7 @@ export default async function handler(req, res) {
 
   const records = [];
   let received = 0;
+  let retainedSkipped = 0;
   let lastSaved = 0;
   let sensorStatus = null;
 
@@ -48,7 +44,7 @@ export default async function handler(req, res) {
         client.subscribe([TOPIC, 'odds/sensor/status'], { qos: 0 });
       });
 
-      client.on('message', (topic, buf) => {
+      client.on('message', (topic, buf, packet) => {
         let d;
         try { d = JSON.parse(buf.toString()); } catch { return; }
 
@@ -56,6 +52,9 @@ export default async function handler(req, res) {
           sensorStatus = d.status || null;
           return;
         }
+
+        // Pesan "retained" = salinan lama yang disimpan broker, bukan data baru dari sensor.
+        if (packet && packet.retain) { retainedSkipped++; return; }
 
         received++;
         const now = Date.now();
@@ -68,7 +67,7 @@ export default async function handler(req, res) {
 
         lastSaved = now;
         records.push({
-          ts: now, // waktu server (ms)
+          ts: now,
           temp: isNaN(temp) ? null : temp,
           hum: isNaN(hum) ? null : hum,
           wind: isNaN(wind) ? null : wind
@@ -88,17 +87,38 @@ export default async function handler(req, res) {
     updates['meta/collector'] = {
       lastRun: Date.now(),
       received,
+      retainedSkipped,
       saved: records.length,
       sensorStatus
     };
     await db.ref().update(updates);
 
-    return res.status(200).json({ ok: true, received, saved: records.length, sensorStatus });
+    return { ok: true, received, retainedSkipped, saved: records.length, sensorStatus };
   } catch (err) {
     console.error(err);
     try {
       await getDb().ref('meta/collector').update({ lastRun: Date.now(), lastError: String(err.message || err) });
     } catch { /* abaikan */ }
-    return res.status(500).json({ ok: false, error: String(err.message || err) });
+    return { ok: false, error: String(err.message || err) };
   }
+}
+
+export default async function handler(req, res) {
+  // --- Autentikasi sederhana ---
+  const bearer = (req.headers.authorization || '').replace('Bearer ', '');
+  const key = req.query.key || bearer;
+  if (!process.env.CRON_SECRET || key !== process.env.CRON_SECRET) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  // Uji manual: tambahkan &wait=1 untuk menunggu dan melihat hasil lengkap (~50 detik).
+  if (req.query.wait) {
+    const result = await collect();
+    return res.status(result.ok ? 200 : 500).json(result);
+  }
+
+  // Panggilan cron: balas langsung (di bawah batas 30 detik cron-job.org),
+  // pekerjaan perekaman tetap berjalan di latar belakang.
+  waitUntil(collect());
+  return res.status(202).json({ ok: true, started: true });
 }
